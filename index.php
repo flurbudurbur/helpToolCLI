@@ -1,14 +1,14 @@
 <?php
 echo "running index.php\n";
-array_shift($argv);
 $cli = new CLITools();
-$cli->execute();
+echo $cli->execute();
 
 class CLITools
 {
     private $version = '1.0.0';
     private $commands = [
         'help' => [
+            'id' => 'help',
             'flags' => ['--help', '-h', '-?', '?'],
             'arg' => null,
             'usage' => 'Prints this help message',
@@ -16,6 +16,7 @@ class CLITools
             'detailed' => ['When appended to another command, prints detailed help for that command.']
         ],
         'version' => [
+            'id' => 'version',
             'flags' => ['--version', '-v'],
             'arg' => null,
             'usage' => 'Prints the current version of the script',
@@ -23,6 +24,7 @@ class CLITools
             'detailed' => []
         ],
         'month' => [
+            'id' => 'month',
             'flags' => ['--month', '-m'],
             'arg' => 'int',
             'usage' => 'Sets the month',
@@ -30,6 +32,7 @@ class CLITools
             'detailed' => ['Sets the month to be used in the script.', 'The month must be a number between 1 and 12.', 'Default is the current month.']
         ],
         'year' => [
+            'id' => 'year',
             'flags' => ['--year', '-y'],
             'arg' => 'int',
             'usage' => 'Sets the year',
@@ -37,6 +40,7 @@ class CLITools
             'detailed' => ['Sets the year to be used in the script.', 'Handy for leap years.', 'Default is the current year.']
         ],
         'silent' => [
+            'id' => 'silent',
             'flags' => ['--silent'],
             'arg' => null,
             'usage' => 'Silences the output',
@@ -44,6 +48,7 @@ class CLITools
             'detailed' => ['Silences the output of the script.', 'Useful for running the script in the background.']
         ],
         'script' => [
+            'id' => 'script',
             'flags' => ['--script', '-s'],
             'arg' => 'string',
             'usage' => 'Specifies the script to run',
@@ -52,19 +57,54 @@ class CLITools
         ]
     ];
 
-    public function execute()
+    /**
+     * Call to run script.
+     * @param array|null $args Optionally pass arguments directly.
+     * @return bool True on success.
+     */
+    public function execute(array $args = null)
+    {
+        global $argv;
+        // drop the source file from the array
+        array_shift($argv);
+
+        if (isset($args)) {
+            $argv = $args;
+        }
+        echo "argv: ";
+        print_r($argv);
+
+        if (in_array(end($argv), $this->commands['help']['flags'])) {
+            if (count($argv) > 1 && in_array(end($argv), $this->commands['help']['flags'])) {
+                $help = explode("=", $argv[count($argv) - 2]);
+                $help = preg_replace('(--)', '', $help[0]);
+                $this->getHelp($help, true);
+            } elseif (count($argv) == 1) {
+                $this->getHelp();
+            }
+            return false;
+        }
+
+        if (!$this->validateArguments()) {
+            // no reason needs to be provided because
+            // the validateArguments function already
+            // does so.
+            return false;
+        }
+
+        return true;
+    }
+
+    /**
+     * Validates proper usage of arguments passed along
+     * and if determined that an argument wasn't used
+     * properly it calls the help message for the given argument.
+     * @return bool True if all arguments are valid.
+     */
+    public function validateArguments()
     {
         global $argv;
 
-        // if last argument is a --help flag or empty, print help message
-        if (in_array(end($argv), $this->commands['help']['flags']) || empty($argv)) {
-            $this->getHelp();
-            exit();
-        }
-    }
-
-    public function validateArguments(array $argv, bool $silent = false)
-    {
         $commands = $this->commands;
         foreach ($argv as $arg) {
             // arg[0] -> flag
@@ -83,21 +123,26 @@ class CLITools
                     switch ($command['arg']) {
                         case 'int':
                             if (!is_numeric($arg[1])) {
-                                echo "Invalid argument! '$arg[0]' $arg[1], requires a number.\n";
+                                $this->getHelp($command['id'], true);
+                                return false;
                             }
                             break;
                         case null:
                             if (isset($arg[1])) {
-                                exit($arg[0] . " does not take any arguments\n");
+                                $this->getHelp($command['id'], true);
+                                return false;
                             }
                             break;
                         case 'string':
                             if ($arg[1] === '') {
-                                echo "Invalid argument! '$arg[0]' requires a string.\n";
+                                $this->getHelp($command['id'], true);
+                                return false;
                             }
                             break;
                         default:
-                            exit("Invalid argument type: $command[arg]");
+                            echo "unknown argument\n";
+                            $this->getHelp();
+                            return false;
                     }
                     $validArg = true;
                     continue;
@@ -106,12 +151,17 @@ class CLITools
         }
 
         if (!$validArg) {
-            exit("Invalid argument: $arg[0]");
+            echo "Invalid argument: $arg[0]\n";
+            return false;
         }
 
         return true;
     }
 
+    /**
+     * Get the version of the script.
+     * @return void
+     */
     public function getVersion()
     {
         echo "Version: $this->version\n";
