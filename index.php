@@ -1,7 +1,21 @@
 <?php
 echo "running index.php\n";
+
+// Read the raw input
+$rawInput = file_get_contents('php://input');
 $cli = new CLITools();
-echo $cli->execute();
+$args = $cli->convertWebToCLI($rawInput);
+// print_r($args);
+if (isset($args)) {
+    echo "running with args\n";
+    echo "[" . date("d-m-Y H:i:s") . "] ";
+    echo $cli->execute($args) ? "success\n" : "failure\n";
+} else {
+    echo "running without args\n";
+    echo "[" . date("d-m-Y H:i:s") . "] ";
+    echo $cli->execute() ? "success\n" : "failure\n";
+    posix_mkfifo("test.fifo", "w");
+}
 
 class CLITools
 {
@@ -11,7 +25,7 @@ class CLITools
             'id' => 'help',
             'flags' => ['--help', '-h', '-?', '?'],
             'arg' => null,
-            'usage' => 'Prints this help message',
+            'usage' => '{command} [--help,-h]',
             'required' => false,
             'detailed' => ['When appended to another command, prints detailed help for that command.']
         ],
@@ -19,7 +33,7 @@ class CLITools
             'id' => 'version',
             'flags' => ['--version', '-v'],
             'arg' => null,
-            'usage' => 'Prints the current version of the script',
+            'usage' => '[--version,-v]',
             'required' => false,
             'detailed' => []
         ],
@@ -27,7 +41,7 @@ class CLITools
             'id' => 'month',
             'flags' => ['--month', '-m'],
             'arg' => 'int',
-            'usage' => 'Sets the month',
+            'usage' => '[--month,-m]=<month>',
             'required' => false,
             'detailed' => ['Sets the month to be used in the script.', 'The month must be a number between 1 and 12.', 'Default is the current month.']
         ],
@@ -35,7 +49,7 @@ class CLITools
             'id' => 'year',
             'flags' => ['--year', '-y'],
             'arg' => 'int',
-            'usage' => 'Sets the year',
+            'usage' => '[--year,-y]=<year>',
             'required' => false,
             'detailed' => ['Sets the year to be used in the script.', 'Handy for leap years.', 'Default is the current year.']
         ],
@@ -43,7 +57,7 @@ class CLITools
             'id' => 'silent',
             'flags' => ['--silent'],
             'arg' => null,
-            'usage' => 'Silences the output',
+            'usage' => '--silent',
             'required' => false,
             'detailed' => ['Silences the output of the script.', 'Useful for running the script in the background.']
         ],
@@ -51,7 +65,7 @@ class CLITools
             'id' => 'script',
             'flags' => ['--script', '-s'],
             'arg' => 'string',
-            'usage' => 'Specifies the script to run',
+            'usage' => '<command> [--script,-s]=<script> {--month,-m} {--year,-y}',
             'required' => true,
             'detailed' => ['Specifies the script to run.', 'The script must be a valid PHP file.']
         ]
@@ -62,16 +76,18 @@ class CLITools
      * @param array|null $args Optionally pass arguments directly.
      * @return bool True on success.
      */
-    public function execute(array $args = null)
+    public function execute(array $args = null) : bool
     {
         global $argv;
+        $GLOBALS['argcli'] = [];
         // drop the source file from the array
-        array_shift($argv);
 
         if (isset($args)) {
             $argv = $args;
+        } else {
+            array_shift($argv);
         }
-        echo "argv: ";
+
         print_r($argv);
 
         if (in_array(end($argv), $this->commands['help']['flags'])) {
@@ -92,6 +108,18 @@ class CLITools
             return false;
         }
 
+        // get required arguments and add them to the global array
+        foreach ($this->commands as $command) {
+            if ($command['required'] && !isset($GLOBALS['argcli'][$command['id']])) {
+                echo "--$command[id] is required: $command[usage]\n";
+                return false;
+            }
+        }
+
+        $argcli = $GLOBALS['argcli'];
+
+        print_r($argcli);
+
         return true;
     }
 
@@ -101,9 +129,14 @@ class CLITools
      * properly it calls the help message for the given argument.
      * @return bool True if all arguments are valid.
      */
-    public function validateArguments()
+    public function validateArguments() : bool
     {
         global $argv;
+
+        if (count($argv) == 0) {
+            echo "No arguments provided\n";
+            return false;
+        }
 
         $commands = $this->commands;
         foreach ($argv as $arg) {
@@ -113,7 +146,8 @@ class CLITools
 
             // check argument count
             if (count($arg) > 2) {
-                exit("Too many arguments for $arg[0]\n");
+                echo "Too many arguments for $arg[0]\n";
+                return false;
             }
 
             $validArg = false;
@@ -125,18 +159,24 @@ class CLITools
                             if (!is_numeric($arg[1])) {
                                 $this->getHelp($command['id'], true);
                                 return false;
+                            } else {
+                                $GLOBALS['argcli'][$command['id']] = $arg[1];
                             }
                             break;
                         case null:
                             if (isset($arg[1])) {
                                 $this->getHelp($command['id'], true);
                                 return false;
+                            } else {
+                                $GLOBALS['argcli'][$command['id']] = true;
                             }
                             break;
                         case 'string':
-                            if ($arg[1] === '') {
+                            if (count($arg) == 1 || $arg[1] === '') {
                                 $this->getHelp($command['id'], true);
                                 return false;
+                            } else {
+                                $GLOBALS['argcli'][$command['id']] = $arg[1];
                             }
                             break;
                         default:
@@ -162,13 +202,14 @@ class CLITools
      * Get the version of the script.
      * @return void
      */
-    public function getVersion()
+    public function getVersion() : void
     {
         echo "Version: $this->version\n";
     }
 
     public function getHelp(string $command = null, bool $detailed = false)
     {
+        echo "-- '< >' = required, '[ ]' = aliases/commands, '{ }' = optionals --\n";
         if ($command) {
             if (array_key_exists($command, $this->commands)) {
                 echo "Usage for $command: " . $this->commands[$command]['usage'] . "\n";
@@ -201,5 +242,27 @@ class CLITools
                 echo "\n";
             }
         }
+    }
+
+    /**
+     * Convert the web input to CLI-compatible arguments.
+     * @param string $rawInput The raw input from the web, as received through `php://input`.
+     * @return array|null The converted arguments.
+     */
+    function convertWebToCLI(string $rawInput)
+    {
+        // Decode the JSON input
+        $inputData = json_decode($rawInput, true);
+
+        if (json_last_error() !== JSON_ERROR_NONE) {
+            return null;
+        }
+
+        $args = explode(' ', $inputData['command']);
+        return $args;
+    }
+
+    function consoleLog($data) {
+        echo "[" . date("d-m-Y H:i:s") . "] " . $data . "\n";
     }
 }
