@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -37,15 +38,29 @@
             height: 440px;
             overflow-y: scroll;
         }
+
+        .title {
+            display: flex;
+            gap: 5px;
+            justify-content: flex-start;
+        }
+
+        .title>form {
+            display: flex;
+            gap: 5px;
+        }
     </style>
 </head>
+
 <body>
     <h1>Command Injection</h1>
-    <form action="" >
-        <input type="text" id="command" value="--script=2002 --year=3000">
-        <input type="submit" value="execute">
-    </form>
-    <button type="none" id="clear">Clear console</button>
+    <div class="title">
+        <form action="">
+            <input type="text" id="command" value="--script=2002 --year=3000">
+            <input type="submit" value="execute">
+        </form>
+        <button type="none" id="clear">Clear console</button>
+    </div>
 
 
     <h2>Console output</h2>
@@ -53,4 +68,5 @@
         <div class="console" id="console"></div>
     </pre>
 </body>
+
 </html>
